@@ -27,7 +27,7 @@ body {
     height: 100%;
     display: block;
     pointer-events: auto;
+    touch-action: none;
   }
   
 
-  
