@@ -1,0 +1,31 @@
+body {
+    margin: 0;
+    padding: 0;
+    background: #f8f4ee; /* !!CHANGE HERE IF NOT CORRECT SHADE!! - matches the cream tone */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+  }
+  
+  .az-logo-reveal {
+    position: relative;
+    max-width: 900px;
+    width: 100%;
+  }
+  
+  .az-logo-base {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  
+  #az-reveal-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: auto;
+  }
+  

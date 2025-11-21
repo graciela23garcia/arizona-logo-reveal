@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arizona Logo Reveal</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="az-logo-reveal" id="az-logo-reveal">
+    <!-- New logo (the one on the bottom layer) -->
+    <img
+      id="az-new-logo"
+      class="az-logo-base"
+      src="./assets/new-logo.jpg"
+      alt="New Logo"
+    />
+
+    <!-- Canvas - old logo will draw here -->
+    <canvas id="az-reveal-canvas"></canvas>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
