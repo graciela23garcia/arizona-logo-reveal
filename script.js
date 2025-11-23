@@ -8,9 +8,9 @@ window.addEventListener("load", () => {
   oldLogoImg.src = "./assets/old-logo.jpg";
 
   // Lava-lamp trail settings
-  const STEP_DIVISOR = 3;      // the smaller the number the smoother/denser trail
-  const MAX_BLOBS = 300;       // how long the tail is (in segments)
-  const BLOB_LIFETIME = 150;    // frames (~1 second at 60fps)
+  const STEP_DIVISOR =3;      // the smaller the number the smoother/denser trail
+  const MAX_BLOBS = 500;       // longer tail for better lava lamp effect
+  const BLOB_LIFETIME = 200;   // longer lifetime so blobs can detach before disappearing
 
   let blobs = [];
   let drawing = false;         // for mouse: "have we started a stroke?"
@@ -34,24 +34,35 @@ window.addEventListener("load", () => {
   });
 
   function resizeCanvas() {
-    const rect = newLogoImg.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    if (!width || !height) return;
-
-    canvas.width = width;
-    canvas.height = height;
+    // Canvas now covers entire viewport - use window dimensions to match 100vw/100vh
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.width = w;
+    canvas.height = h;
   }
 
   function drawFullOldLogo() {
     if (!oldLogoImg.complete || !canvas.width || !canvas.height) return;
+    
+    // Get the image's position on screen
+    const rect = newLogoImg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
-    ctx.drawImage(oldLogoImg, 0, 0, canvas.width, canvas.height);
+    
+    // Draw old logo only in the image's screen position
+    const scaleX = canvas.width / window.innerWidth;
+    const scaleY = canvas.height / window.innerHeight;
+    const x = rect.left * scaleX;
+    const y = rect.top * scaleY;
+    const w = rect.width * scaleX;
+    const h = rect.height * scaleY;
+    
+    ctx.drawImage(oldLogoImg, x, y, w, h);
   }
 
   function getCanvasPos(evt) {
-    const rect = canvas.getBoundingClientRect();
     let clientX, clientY;
 
     if (evt.touches && evt.touches.length > 0) {
@@ -62,8 +73,9 @@ window.addEventListener("load", () => {
       clientY = evt.clientY;
     }
 
-    const x = ((clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((clientY - rect.top) / rect.height) * canvas.height;
+    // Canvas is fullscreen, so coordinates map directly to canvas pixels
+    const x = (clientX / window.innerWidth) * canvas.width;
+    const y = (clientY / window.innerHeight) * canvas.height;
     return { x, y };
   }
 
@@ -135,32 +147,130 @@ window.addEventListener("load", () => {
   function drawBlobs() {
     if (blobs.length === 0) return;
 
-    ctx.save();
-    ctx.globalCompositeOperation = "destination-out";
+    // Get image bounds to check if blob overlaps image
+    const rect = newLogoImg.getBoundingClientRect();
+    const scaleX = canvas.width / window.innerWidth;
+    const scaleY = canvas.height / window.innerHeight;
+    const imgX = rect.left * scaleX;
+    const imgY = rect.top * scaleY;
+    const imgW = rect.width * scaleX;
+    const imgH = rect.height * scaleY;
 
-    blobs.forEach((blob) => {
+    ctx.save();
+
+    blobs.forEach((blob, index) => {
       // Age 0 → fresh (t = 1), age near BLOB_LIFETIME → old (t ~ 0)
       let t = 1 - blob.age / BLOB_LIFETIME;
       if (t < 0) t = 0;
       if (t > 1) t = 1;
 
-      // Head (young) is thick, old segments are thin
-      const r = BRUSH_RADIUS * (0.2 + 0.8 * t); // tweak 0.2 for how skinny old bits get
-      const alphaCenter = 0.95; // keep pretty solid
+      const alphaCenter = 0.95;
 
-      const gradient = ctx.createRadialGradient(
-        blob.x, blob.y, 0,
-        blob.x, blob.y, r
-      );
+      // Progressive effect: fresh blobs are circles, older blobs extend horizontally
+      // Calculate horizontal extension - older blobs become longer horizontal strokes
+      const horizontalLength = (1 - t) * BRUSH_RADIUS * 4; // Extends horizontally as it ages
+      const verticalWidth = BRUSH_RADIUS * (0.3 + 0.7 * t); // Gets thinner as it extends
+      
+      // For fresh blobs, use circular shape
+      const r = BRUSH_RADIUS * (0.2 + 0.8 * t);
+      
+      // Determine if blob should be circle or elongated stroke
+      const isElongated = t < 0.6; // When t < 0.6, blob becomes elongated
 
-      gradient.addColorStop(0.0, `rgba(0,0,0,${alphaCenter})`);
-      gradient.addColorStop(0.5, `rgba(0,0,0,${alphaCenter})`);
-      gradient.addColorStop(1.0, "rgba(0,0,0,0)");
+      // Calculate bounds for overlap check
+      let blobLeft, blobRight, blobTop, blobBottom;
+      if (isElongated) {
+        blobLeft = blob.x - horizontalLength / 2;
+        blobRight = blob.x + horizontalLength / 2;
+        blobTop = blob.y - verticalWidth / 2;
+        blobBottom = blob.y + verticalWidth / 2;
+      } else {
+        blobLeft = blob.x - r;
+        blobRight = blob.x + r;
+        blobTop = blob.y - r;
+        blobBottom = blob.y + r;
+      }
+      
+      const overlapsImage = !(blobRight < imgX || blobLeft > imgX + imgW || 
+                             blobBottom < imgY || blobTop > imgY + imgH);
 
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(blob.x, blob.y, r, 0, Math.PI * 2);
-      ctx.fill();
+      // Always draw black blob first
+      ctx.globalCompositeOperation = "source-over";
+      
+      if (isElongated) {
+        // Draw as horizontal elongated stroke (ink spreading effect)
+        const gradient = ctx.createLinearGradient(
+          blob.x - horizontalLength / 2, blob.y,
+          blob.x + horizontalLength / 2, blob.y
+        );
+        
+        gradient.addColorStop(0.0, "rgba(0,0,0,0)");
+        gradient.addColorStop(0.2, `rgba(0,0,0,${alphaCenter})`);
+        gradient.addColorStop(0.8, `rgba(0,0,0,${alphaCenter})`);
+        gradient.addColorStop(1.0, "rgba(0,0,0,0)");
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(blob.x - horizontalLength / 2, blob.y - verticalWidth / 2, horizontalLength, verticalWidth);
+      } else {
+        // Draw as circle for fresh blobs
+        const gradient = ctx.createRadialGradient(
+          blob.x, blob.y, 0,
+          blob.x, blob.y, r
+        );
+
+        gradient.addColorStop(0.0, `rgba(0,0,0,${alphaCenter})`);
+        gradient.addColorStop(0.5, `rgba(0,0,0,${alphaCenter * 0.9})`);
+        gradient.addColorStop(1.0, "rgba(0,0,0,0)");
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(blob.x, blob.y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // If blob overlaps image, also erase the part over the image to reveal new logo
+      if (overlapsImage) {
+        ctx.globalCompositeOperation = "destination-out";
+        
+        // Create a clipping path for just the image area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(imgX, imgY, imgW, imgH);
+        ctx.clip();
+        
+        if (isElongated) {
+          // Erase elongated stroke
+          const eraseGradient = ctx.createLinearGradient(
+            blob.x - horizontalLength / 2, blob.y,
+            blob.x + horizontalLength / 2, blob.y
+          );
+          
+          eraseGradient.addColorStop(0.0, "rgba(0,0,0,0)");
+          eraseGradient.addColorStop(0.2, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(0.8, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(1.0, "rgba(0,0,0,0)");
+          
+          ctx.fillStyle = eraseGradient;
+          ctx.fillRect(blob.x - horizontalLength / 2, blob.y - verticalWidth / 2, horizontalLength, verticalWidth);
+        } else {
+          // Erase circle
+          const eraseGradient = ctx.createRadialGradient(
+            blob.x, blob.y, 0,
+            blob.x, blob.y, r
+          );
+          
+          eraseGradient.addColorStop(0.0, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(0.5, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(1.0, "rgba(0,0,0,0)");
+          
+          ctx.fillStyle = eraseGradient;
+          ctx.beginPath();
+          ctx.arc(blob.x, blob.y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        ctx.restore();
+      }
     });
 
     ctx.restore();
@@ -171,7 +281,7 @@ window.addEventListener("load", () => {
 
     if (!canvas.width || !canvas.height || !oldLogoImg.complete) return;
 
-    // Update ages + remove “dead” blobs
+    // Update ages + remove "dead" blobs
     for (let i = blobs.length - 1; i >= 0; i--) {
       const b = blobs[i];
       b.age += 1;
