@@ -230,7 +230,9 @@ window.addEventListener("load", () => {
 
       // If blob overlaps image, also erase the part over the image to reveal new logo
       if (overlapsImage) {
+        // Ensure we're completely erasing
         ctx.globalCompositeOperation = "destination-out";
+        ctx.globalAlpha = 1; // Ensure full opacity for erase
         
         // Create a clipping path for just the image area
         ctx.save();
@@ -239,28 +241,40 @@ window.addEventListener("load", () => {
         ctx.clip();
         
         if (isElongated) {
-          // Erase elongated stroke
+          // Erase elongated stroke - use mostly solid center for complete erase
+          // Draw solid center first (90% of length)
+          const solidLength = horizontalLength * 0.9;
+          ctx.fillStyle = "rgba(0,0,0,1)";
+          ctx.fillRect(blob.x - solidLength / 2, blob.y - verticalWidth / 2, solidLength, verticalWidth);
+          
+          // Small gradient edges for smooth transition
           const eraseGradient = ctx.createLinearGradient(
             blob.x - horizontalLength / 2, blob.y,
             blob.x + horizontalLength / 2, blob.y
           );
           
           eraseGradient.addColorStop(0.0, "rgba(0,0,0,0)");
-          eraseGradient.addColorStop(0.2, `rgba(0,0,0,${alphaCenter})`);
-          eraseGradient.addColorStop(0.8, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(0.05, "rgba(0,0,0,1)");
+          eraseGradient.addColorStop(0.95, "rgba(0,0,0,1)");
           eraseGradient.addColorStop(1.0, "rgba(0,0,0,0)");
           
           ctx.fillStyle = eraseGradient;
           ctx.fillRect(blob.x - horizontalLength / 2, blob.y - verticalWidth / 2, horizontalLength, verticalWidth);
         } else {
-          // Erase circle
+          // Erase circle - use completely solid erase for center, minimal gradient edge
+          // Draw solid center (95% of radius) for complete erase - no gray should show
+          ctx.fillStyle = "rgba(0,0,0,1)";
+          ctx.beginPath();
+          ctx.arc(blob.x, blob.y, r * 0.95, 0, Math.PI * 2); // Much larger solid center
+          ctx.fill();
+          
+          // Very small gradient edge only for smooth transition
           const eraseGradient = ctx.createRadialGradient(
-            blob.x, blob.y, 0,
+            blob.x, blob.y, r * 0.95,
             blob.x, blob.y, r
           );
           
-          eraseGradient.addColorStop(0.0, `rgba(0,0,0,${alphaCenter})`);
-          eraseGradient.addColorStop(0.5, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(0.0, "rgba(0,0,0,1)");
           eraseGradient.addColorStop(1.0, "rgba(0,0,0,0)");
           
           ctx.fillStyle = eraseGradient;
