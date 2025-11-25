@@ -14,8 +14,8 @@ window.addEventListener("load", () => {
   // Lava-lamp trail settings - optimized for performance
   const STEP_DIVISOR =3;      // the smaller the number the smoother/denser trail
   // Safari-specific optimizations (more aggressive for better performance)
-  const MAX_BLOBS = isSafari ? 200 : 300;       // Lower for Safari, higher for Chrome
-  const BLOB_LIFETIME = isSafari ? 120 : 150;   // Shorter for Safari, longer for Chrome
+  const MAX_BLOBS = isSafari ? 200 : 400;       // Increased for longer tail, Safari still optimized
+  const BLOB_LIFETIME = isSafari ? 130 : 180;   // Increased for longer tail, Safari still optimized
   
   // Cache for old logo to avoid redrawing every frame
   let oldLogoCache = null;
@@ -134,9 +134,9 @@ window.addEventListener("load", () => {
   function stopDraw(evt) {
     evt && evt.preventDefault();
     drawing = false;
-
-    // if you ever re-use fade logic, this is where you'd flip it on
-    // fadingOut = true;
+    
+    // Clear all blobs when drawing stops so they disappear
+    blobs = [];
   }
 
   // MOUSE + TOUCH MOVE: hover for mouse, drag for touch
@@ -259,37 +259,49 @@ window.addEventListener("load", () => {
 
       // If blob overlaps image, also erase the part over the image to reveal new logo
       if (overlapsImage) {
+        ctx.save();
         ctx.globalCompositeOperation = "destination-out";
+        ctx.globalAlpha = 1; // Ensure full opacity for complete erase
         
         // Create a clipping path for just the image area
-        ctx.save();
         ctx.beginPath();
         ctx.rect(imgX, imgY, imgW, imgH);
         ctx.clip();
         
         if (isElongated) {
-          // Erase elongated stroke
+          // Erase elongated stroke - draw solid center first for complete erase
+          const solidLength = horizontalLength * 0.85; // 85% solid center
+          ctx.fillStyle = "rgba(0,0,0,1)";
+          ctx.fillRect(blob.x - solidLength / 2, blob.y - verticalWidth / 2, solidLength, verticalWidth);
+          
+          // Then gradient edges for smooth transition
           const eraseGradient = ctx.createLinearGradient(
             blob.x - horizontalLength / 2, blob.y,
             blob.x + horizontalLength / 2, blob.y
           );
           
           eraseGradient.addColorStop(0.0, "rgba(0,0,0,0)");
-          eraseGradient.addColorStop(0.2, `rgba(0,0,0,${alphaCenter})`);
-          eraseGradient.addColorStop(0.8, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(0.1, "rgba(0,0,0,1)");
+          eraseGradient.addColorStop(0.9, "rgba(0,0,0,1)");
           eraseGradient.addColorStop(1.0, "rgba(0,0,0,0)");
           
           ctx.fillStyle = eraseGradient;
           ctx.fillRect(blob.x - horizontalLength / 2, blob.y - verticalWidth / 2, horizontalLength, verticalWidth);
         } else {
-          // Erase circle
+          // Erase circle - draw solid center first for complete erase
+          const solidRadius = r * 0.9; // 90% solid center
+          ctx.fillStyle = "rgba(0,0,0,1)";
+          ctx.beginPath();
+          ctx.arc(blob.x, blob.y, solidRadius, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Then gradient edge for smooth transition
           const eraseGradient = ctx.createRadialGradient(
-            blob.x, blob.y, 0,
+            blob.x, blob.y, solidRadius,
             blob.x, blob.y, r
           );
           
-          eraseGradient.addColorStop(0.0, `rgba(0,0,0,${alphaCenter})`);
-          eraseGradient.addColorStop(0.5, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(0.0, "rgba(0,0,0,1)");
           eraseGradient.addColorStop(1.0, "rgba(0,0,0,0)");
           
           ctx.fillStyle = eraseGradient;
@@ -319,13 +331,11 @@ window.addEventListener("load", () => {
       }
     }
 
-    // Only clear and redraw if there are blobs or old logo needs to be shown
-    if (blobs.length > 0 || !oldLogoCache) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawFullOldLogo();
-      if (blobs.length > 0) {
-        drawBlobs();
-      }
+    // Always clear and redraw to prevent Safari glitches
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawFullOldLogo();
+    if (blobs.length > 0) {
+      drawBlobs();
     }
   }
 
