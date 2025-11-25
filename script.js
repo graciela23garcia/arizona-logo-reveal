@@ -1,16 +1,21 @@
 console.log("🔥 chicken chucky");
 window.addEventListener("load", () => {
   const canvas = document.getElementById("az-reveal-canvas");
-  const ctx = canvas.getContext("2d");
+  // Optimize canvas context for performance (especially Safari)
+  const ctx = canvas.getContext("2d", { willReadFrequently: false });
   const newLogoImg = document.getElementById("az-new-logo");
 
   const oldLogoImg = new Image();
   oldLogoImg.src = "./assets/old-logo.jpg";
 
-  // Lava-lamp trail settings
+  // Lava-lamp trail settings - optimized for performance
   const STEP_DIVISOR =3;      // the smaller the number the smoother/denser trail
-  const MAX_BLOBS = 500;       // longer tail for better lava lamp effect
-  const BLOB_LIFETIME = 200;   // longer lifetime so blobs can detach before disappearing
+  const MAX_BLOBS = 300;       // reduced for better performance (was 500)
+  const BLOB_LIFETIME = 150;   // reduced for better performance (was 200)
+  
+  // Cache for old logo to avoid redrawing every frame
+  let oldLogoCache = null;
+  let oldLogoCacheRect = null;
 
   let blobs = [];
   let drawing = false;         // for mouse: "have we started a stroke?"
@@ -39,6 +44,9 @@ window.addEventListener("load", () => {
     const h = window.innerHeight;
     canvas.width = w;
     canvas.height = h;
+    // Invalidate cache on resize
+    oldLogoCache = null;
+    oldLogoCacheRect = null;
   }
 
   function drawFullOldLogo() {
@@ -48,10 +56,6 @@ window.addEventListener("load", () => {
     const rect = newLogoImg.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
-    
-    // Draw old logo only in the image's screen position
     const scaleX = canvas.width / window.innerWidth;
     const scaleY = canvas.height / window.innerHeight;
     const x = rect.left * scaleX;
@@ -59,7 +63,28 @@ window.addEventListener("load", () => {
     const w = rect.width * scaleX;
     const h = rect.height * scaleY;
     
-    ctx.drawImage(oldLogoImg, x, y, w, h);
+    // Cache the old logo - only redraw if position/size changed
+    const currentRect = { x, y, w, h };
+    const rectChanged = !oldLogoCacheRect || 
+      oldLogoCacheRect.x !== x || oldLogoCacheRect.y !== y || 
+      oldLogoCacheRect.w !== w || oldLogoCacheRect.h !== h;
+    
+    if (rectChanged || !oldLogoCache) {
+      // Create or update cache
+      if (!oldLogoCache || rectChanged) {
+        oldLogoCache = document.createElement('canvas');
+        oldLogoCache.width = w;
+        oldLogoCache.height = h;
+        const cacheCtx = oldLogoCache.getContext('2d');
+        cacheCtx.drawImage(oldLogoImg, 0, 0, w, h);
+        oldLogoCacheRect = currentRect;
+      }
+    }
+    
+    // Draw from cache instead of redrawing image every frame
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.drawImage(oldLogoCache, x, y, w, h);
   }
 
   function getCanvasPos(evt) {
@@ -230,9 +255,7 @@ window.addEventListener("load", () => {
 
       // If blob overlaps image, also erase the part over the image to reveal new logo
       if (overlapsImage) {
-        // Ensure we're completely erasing
         ctx.globalCompositeOperation = "destination-out";
-        ctx.globalAlpha = 1; // Ensure full opacity for erase
         
         // Create a clipping path for just the image area
         ctx.save();
@@ -241,40 +264,28 @@ window.addEventListener("load", () => {
         ctx.clip();
         
         if (isElongated) {
-          // Erase elongated stroke - use mostly solid center for complete erase
-          // Draw solid center first (90% of length)
-          const solidLength = horizontalLength * 0.9;
-          ctx.fillStyle = "rgba(0,0,0,1)";
-          ctx.fillRect(blob.x - solidLength / 2, blob.y - verticalWidth / 2, solidLength, verticalWidth);
-          
-          // Small gradient edges for smooth transition
+          // Erase elongated stroke
           const eraseGradient = ctx.createLinearGradient(
             blob.x - horizontalLength / 2, blob.y,
             blob.x + horizontalLength / 2, blob.y
           );
           
           eraseGradient.addColorStop(0.0, "rgba(0,0,0,0)");
-          eraseGradient.addColorStop(0.05, "rgba(0,0,0,1)");
-          eraseGradient.addColorStop(0.95, "rgba(0,0,0,1)");
+          eraseGradient.addColorStop(0.2, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(0.8, `rgba(0,0,0,${alphaCenter})`);
           eraseGradient.addColorStop(1.0, "rgba(0,0,0,0)");
           
           ctx.fillStyle = eraseGradient;
           ctx.fillRect(blob.x - horizontalLength / 2, blob.y - verticalWidth / 2, horizontalLength, verticalWidth);
         } else {
-          // Erase circle - use completely solid erase for center, minimal gradient edge
-          // Draw solid center (95% of radius) for complete erase - no gray should show
-          ctx.fillStyle = "rgba(0,0,0,1)";
-          ctx.beginPath();
-          ctx.arc(blob.x, blob.y, r * 0.95, 0, Math.PI * 2); // Much larger solid center
-          ctx.fill();
-          
-          // Very small gradient edge only for smooth transition
+          // Erase circle
           const eraseGradient = ctx.createRadialGradient(
-            blob.x, blob.y, r * 0.95,
+            blob.x, blob.y, 0,
             blob.x, blob.y, r
           );
           
-          eraseGradient.addColorStop(0.0, "rgba(0,0,0,1)");
+          eraseGradient.addColorStop(0.0, `rgba(0,0,0,${alphaCenter})`);
+          eraseGradient.addColorStop(0.5, `rgba(0,0,0,${alphaCenter})`);
           eraseGradient.addColorStop(1.0, "rgba(0,0,0,0)");
           
           ctx.fillStyle = eraseGradient;
@@ -304,9 +315,14 @@ window.addEventListener("load", () => {
       }
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawFullOldLogo();
-    drawBlobs();
+    // Only clear and redraw if there are blobs or old logo needs to be shown
+    if (blobs.length > 0 || !oldLogoCache) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawFullOldLogo();
+      if (blobs.length > 0) {
+        drawBlobs();
+      }
+    }
   }
 
   function attachEvents() {
