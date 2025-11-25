@@ -8,10 +8,14 @@ window.addEventListener("load", () => {
   const oldLogoImg = new Image();
   oldLogoImg.src = "./assets/old-logo.jpg";
 
+  // Detect Safari for performance optimizations
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  
   // Lava-lamp trail settings - optimized for performance
   const STEP_DIVISOR =3;      // the smaller the number the smoother/denser trail
-  const MAX_BLOBS = 300;       // reduced for better performance (was 500)
-  const BLOB_LIFETIME = 150;   // reduced for better performance (was 200)
+  // Safari-specific optimizations (more aggressive for better performance)
+  const MAX_BLOBS = isSafari ? 200 : 300;       // Lower for Safari, higher for Chrome
+  const BLOB_LIFETIME = isSafari ? 120 : 150;   // Shorter for Safari, longer for Chrome
   
   // Cache for old logo to avoid redrawing every frame
   let oldLogoCache = null;
@@ -32,7 +36,7 @@ window.addEventListener("load", () => {
   }
 
   let BRUSH_RADIUS = getBrushRadius();
-
+3
   window.addEventListener("resize", () => {
     BRUSH_RADIUS = getBrushRadius();
     resizeCanvas();
